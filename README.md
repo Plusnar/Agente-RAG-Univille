@@ -1,8 +1,8 @@
 # Assistente Univille
 
-Assistente RAG em Python para responder perguntas de alunos com base em documentos oficiais enviados, como editais, matrizes curriculares e regulamentos.
+Assistente RAG em Python para responder perguntas de alunos com base em documentos oficiais enviados, como editais, matrizes curriculares e regulamentos da Univille.
 
-O sistema usa Streamlit, LangChain, ChromaDB local persistente, embeddings Cohere `embed-multilingual-v3.0` e geração via Cohere `command-a-03-2025` por padrão.
+O sistema usa Streamlit, LangChain, ChromaDB local persistente, embeddings Cohere `embed-multilingual-v3.0` e geração via Cohere por padrão. Talvez com update pra ser hospedado no Vercel.
 
 ## Estrutura
 
@@ -88,51 +88,15 @@ Também é possível colocar arquivos manualmente na pasta `data/` e rodar:
 python ingest.py
 ```
 
-## Como testar perguntas
+O assistente tambem tem uma personalidade simpatica e universitaria, mas essa personalidade nunca substitui as regras de fidelidade ao contexto e também possui uma memoria curta caso ele não entenda o contexto da proxima pergunta ou se o usuario tentar contnuar uma conversa.
 
-Depois de indexar documentos, digite perguntas como:
-
-```text
-Como funciona o trancamento de matrícula?
-```
-
-```text
-Quais são os requisitos do edital?
-```
-
-```text
-Qual disciplina aparece na matriz curricular do curso?
-```
-
-A resposta deve trazer somente a resposta final, sem os rótulos `Resposta:` ou `Explicacao:`. As fontes não aparecem no texto da IA; quando houver fonte recuperada, use o botão `Consultar fonte` em cada resposta para ver arquivo, página, linhas aproximadas e trecho recuperado dentro do navegador.
-
-O app usa uma interface em formato de chat com tema escuro, campo de pergunta fixo na parte inferior e historico mantido durante a sessao. Use `Limpar historico` na barra lateral para iniciar uma conversa nova.
-
-O Assistente Univille tambem usa memoria curta: as ultimas mensagens ajudam a entender referencias como "isso", "esse prazo" ou "essa disciplina". Essa memoria nao substitui o RAG e nao serve como fonte oficial; a resposta continua dependendo dos trechos recuperados dos documentos.
-
-## Como o sistema evita alucinação
-
-O arquivo `prompts.py` define regras anti-alucinação:
-
-- responder apenas com base no contexto recuperado;
-- dizer `Não encontrei essa informação nos documentos disponíveis.` quando os documentos não forem suficientes;
-- dizer `Puxa vida, não entendi a sua pergunta, poderia descrever melhor? Sei tudo sobre a Univille apenas.` quando a pergunta estiver confusa, fora do universo dos documentos da Univille ou nao puder ser respondida pelos trechos recuperados;
-- não inventar prazos, nomes, valores, regras ou procedimentos;
-- nao citar fontes dentro da resposta;
-- exibir fontes apenas pela interface, no botao `Consultar fonte`.
-
-Além disso, `rag.py` usa rerank da Cohere (`COHERE_RERANK_MODEL`) antes de chamar o modelo. Se nenhum trecho passar no corte `MIN_RERANK_SCORE`, o LLM nao e chamado. Isso evita respostas de conhecimento geral ou qualquer assunto que nao esteja nos documentos.
-
-O assistente tambem tem uma personalidade simpatica e universitaria, mas essa personalidade nunca substitui as regras de fidelidade ao contexto.
-
-Quando alterar a forma de exibir fontes ou adicionar novos documentos, clique em `Indexar documentos` novamente. A indicacao de linha e aproximada, pois PDFs nem sempre preservam linhas reais durante a extracao de texto.
 
 ## Pipeline RAG
 
 1. `ingest.py` lê PDFs e TXT.
 2. PDFs são extraídos página por página com metadados de arquivo e página.
 3. O sistema tenta detectar seção ou título a partir das primeiras linhas do texto.
-4. Os textos são divididos em chunks de cerca de 900 caracteres com overlap de 180.
+4. Os textos são divididos em chunks de cerca de 900 caracteres com overlap de 180 (precisa mudar, pode estourar os tokens)
 5. Os chunks são vetorizados e salvos no ChromaDB local.
 6. `rag.py` busca os 5 chunks mais relevantes para cada pergunta.
 7. O modelo gera a resposta usando somente esses chunks como contexto.
