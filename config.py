@@ -12,7 +12,7 @@ load_dotenv(BASE_DIR / ".env", override=True)
 
 COLLECTION_NAME = os.getenv("CHROMA_COLLECTION", "assistente_univille")
 
-EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "cohere").strip().lower()
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "local").strip().lower()
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").strip().lower()
 
 COHERE_API_KEY = (os.getenv("COHERE_API_KEY") or "").strip()
@@ -22,6 +22,7 @@ ADMIN_PASSWORD = (os.getenv("ADMIN_PASSWORD") or "").strip()
 
 COHERE_EMBED_MODEL = os.getenv("COHERE_EMBED_MODEL", "embed-multilingual-v3.0")
 OPENAI_EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
+LOCAL_EMBED_MODEL = os.getenv("LOCAL_EMBED_MODEL", "intfloat/multilingual-e5-small")
 
 OPENAI_CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
 COHERE_CHAT_MODEL = os.getenv("COHERE_CHAT_MODEL", "command-a-03-2025")
@@ -36,6 +37,32 @@ USE_COHERE_RERANK = os.getenv("USE_COHERE_RERANK", "true").strip().lower() == "t
 COHERE_RERANK_MODEL = os.getenv("COHERE_RERANK_MODEL", "rerank-v4.0-fast")
 MIN_RERANK_SCORE = float(os.getenv("MIN_RERANK_SCORE", "0.20"))
 
+_LOCAL_EMBEDDINGS = None
+
+
+class LocalSentenceTransformerEmbeddings:
+    def __init__(self, model_name: str):
+        from sentence_transformers import SentenceTransformer
+
+        self.model = SentenceTransformer(model_name)
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        passages = [f"passage: {text}" for text in texts]
+        embeddings = self.model.encode(
+            passages,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
+        return embeddings.tolist()
+
+    def embed_query(self, text: str) -> list[float]:
+        embedding = self.model.encode(
+            f"query: {text}",
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
+        return embedding.tolist()
+
 
 def ensure_directories() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -43,6 +70,13 @@ def ensure_directories() -> None:
 
 
 def get_embeddings():
+    global _LOCAL_EMBEDDINGS
+
+    if EMBEDDING_PROVIDER == "local":
+        if _LOCAL_EMBEDDINGS is None:
+            _LOCAL_EMBEDDINGS = LocalSentenceTransformerEmbeddings(LOCAL_EMBED_MODEL)
+        return _LOCAL_EMBEDDINGS
+
     if EMBEDDING_PROVIDER == "cohere":
         if not COHERE_API_KEY:
             raise RuntimeError("Defina COHERE_API_KEY no arquivo .env.")
@@ -62,7 +96,7 @@ def get_embeddings():
 
         return OpenAIEmbeddings(model=OPENAI_EMBED_MODEL, api_key=OPENAI_API_KEY)
 
-    raise RuntimeError("EMBEDDING_PROVIDER deve ser 'cohere' ou 'openai'.")
+    raise RuntimeError("EMBEDDING_PROVIDER deve ser 'local', 'cohere' ou 'openai'.")
 
 
 def get_llm():

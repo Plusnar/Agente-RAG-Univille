@@ -23,6 +23,20 @@ NO_CONTEXT_MESSAGE = "Não encontrei essa informação nos documentos disponíve
 CLARIFY_MESSAGE = "Puxa vida, não entendi a sua pergunta, poderia descrever melhor? Sei tudo sobre a Univille apenas."
 MAX_HISTORY_MESSAGES = 6
 MAX_HISTORY_CHARS = 1600
+SMALL_TALK_MESSAGE = "Oláaaaa! Estou por aqui. Manda sua duvida sobre a Univille que eu consulto os documentos sem fazer malabarismo academico."
+SMALL_TALK_TERMS = {
+    "oi",
+    "ola",
+    "opa",
+    "e ai",
+    "bom dia",
+    "boa tarde",
+    "boa noite",
+    "tudo bem",
+    "td bem",
+    "tudo certo",
+    "beleza",
+}
 
 
 def _get_vectorstore():
@@ -83,6 +97,7 @@ def _source_details(docs) -> List[Dict]:
         details.append(
             {
                 "file_name": metadata.get("file_name") or metadata.get("source") or "Documento sem nome",
+                "file_type": metadata.get("file_type") or "",
                 "page": metadata.get("page") or "",
                 "section": metadata.get("section") or "",
                 "line_start": metadata.get("line_start") or "",
@@ -144,6 +159,32 @@ def _normalize_text(text: str) -> str:
     return "".join(char for char in normalized if unicodedata.category(char) != "Mn")
 
 
+def _is_small_talk(question: str) -> bool:
+    normalized = _normalize_text(question)
+    normalized = re.sub(r"[^a-z0-9\s]", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    if not normalized:
+        return False
+
+    words = normalized.split()
+    if len(words) > 4:
+        return False
+
+    return normalized in SMALL_TALK_TERMS
+
+
+def _is_generic_answer(answer: str) -> bool:
+    normalized = _normalize_text(answer)
+    generic_patterns = [
+        "como posso ajudar",
+        "como posso te ajudar",
+        "informacoes sobre a univille",
+        "manda sua duvida",
+        "estou por aqui",
+    ]
+    return any(pattern in normalized for pattern in generic_patterns)
+
+
 def _rerank_documents(question: str, docs, k: int):
     if not USE_COHERE_RERANK or not COHERE_API_KEY or not docs:
         return docs[:k]
@@ -185,6 +226,9 @@ def answer_question(question: str, k: int = RETRIEVER_K, chat_history: List[Dict
     if not cleaned_question:
         return {"answer": "Digite uma pergunta.", "sources": [], "source_details": [], "documents": []}
 
+    if _is_small_talk(cleaned_question):
+        return {"answer": SMALL_TALK_MESSAGE, "sources": [], "source_details": [], "documents": []}
+
     vectorstore = _get_vectorstore()
     docs = _relevant_documents(vectorstore, cleaned_question, k=k)
 
@@ -213,6 +257,9 @@ def answer_question(question: str, k: int = RETRIEVER_K, chat_history: List[Dict
     if _normalize_text(NO_CONTEXT_MESSAGE) in normalized_answer or "puxa vida" in normalized_answer:
         final_answer = CLARIFY_MESSAGE if "puxa vida" in normalized_answer else NO_CONTEXT_MESSAGE
         return {"answer": final_answer, "sources": [], "source_details": [], "documents": []}
+
+    if _is_generic_answer(answer):
+        return {"answer": answer, "sources": [], "source_details": [], "documents": []}
 
     return {
         "answer": answer,

@@ -2,7 +2,7 @@ import hashlib
 import re
 import time
 from pathlib import Path
-from typing import Iterable, List
+from typing import Callable, Iterable, List
 
 import chromadb
 from langchain_core.documents import Document
@@ -18,6 +18,7 @@ from config import (
     EMBEDDING_BATCH_SIZE,
     EMBEDDING_BATCH_SLEEP_SECONDS,
     EMBEDDING_MAX_RETRIES,
+    EMBEDDING_PROVIDER,
     ensure_directories,
     get_embeddings,
 )
@@ -201,13 +202,27 @@ def _is_rate_limit_error(exc: Exception) -> bool:
     return "429" in message or "rate limit" in message or "too many requests" in message
 
 
-def _add_documents_with_backoff(vectorstore, chunks: List[Document]) -> None:
+def _add_documents_with_backoff(
+    vectorstore,
+    chunks: List[Document],
+    progress: Callable[[str], None] | None = None,
+) -> None:
     total = len(chunks)
     batch_size = max(1, EMBEDDING_BATCH_SIZE)
+    sleep_seconds = 0 if EMBEDDING_PROVIDER == "local" else EMBEDDING_BATCH_SLEEP_SECONDS
+    total_batches = (total + batch_size - 1) // batch_size
 
     for start in range(0, total, batch_size):
         batch = chunks[start:start + batch_size]
         ids = [chunk.metadata["chunk_id"] for chunk in batch]
+        batch_number = (start // batch_size) + 1
+        progress_percent = min(100, round(((start + len(batch)) / total) * 100, 1))
+
+        if progress:
+            progress(
+                f"Gerando embeddings lote {batch_number}/{total_batches} "
+                f"({start + len(batch)}/{total} chunks, {progress_percent}%)"
+            )
 
         for attempt in range(EMBEDDING_MAX_RETRIES + 1):
             try:
@@ -219,15 +234,21 @@ def _add_documents_with_backoff(vectorstore, chunks: List[Document]) -> None:
                         raise RuntimeError(RATE_LIMIT_MESSAGE) from exc
                     raise
 
-                wait_seconds = EMBEDDING_BATCH_SLEEP_SECONDS * (attempt + 1)
+                wait_seconds = sleep_seconds * (attempt + 1)
+                if progress and wait_seconds > 0:
+                    progress(f"Limite temporario detectado. Aguardando {wait_seconds:.0f}s antes de tentar novamente...")
                 time.sleep(wait_seconds)
 
-        if start + batch_size < total and EMBEDDING_BATCH_SLEEP_SECONDS > 0:
-            time.sleep(EMBEDDING_BATCH_SLEEP_SECONDS)
+        if start + batch_size < total and sleep_seconds > 0:
+            if progress:
+                progress(f"Aguardando {sleep_seconds:.0f}s antes do proximo lote...")
+            time.sleep(sleep_seconds)
 
 
-def ingest_documents(reset: bool = True) -> dict:
+def ingest_documents(reset: bool = True, progress: Callable[[str], None] | None = None) -> dict:
     ensure_directories()
+    if progress:
+        progress("Lendo documentos em data/...")
     documents = load_documents()
 
     if not documents:
@@ -235,9 +256,18 @@ def ingest_documents(reset: bool = True) -> dict:
             reset_collection()
         return {"files": 0, "pages": 0, "chunks": 0, "message": "Nenhum PDF ou TXT encontrado em data/."}
 
+    if progress:
+        progress(f"Documentos lidos: {len({doc.metadata.get('file_name') for doc in documents})} arquivos, {len(documents)} paginas/entradas.")
+        progress("Dividindo textos em chunks...")
+
     chunks = split_documents(documents)
 
+    if progress:
+        progress(f"Chunks gerados: {len(chunks)}.")
+
     if reset:
+        if progress:
+            progress("Recriando colecao local do ChromaDB...")
         reset_collection()
 
     from langchain_chroma import Chroma
@@ -248,7 +278,7 @@ def ingest_documents(reset: bool = True) -> dict:
         embedding_function=get_embeddings(),
     )
 
-    _add_documents_with_backoff(vectorstore, chunks)
+    _add_documents_with_backoff(vectorstore, chunks, progress=progress)
 
     return {
         "files": len({doc.metadata.get("file_name") for doc in documents}),
@@ -259,6 +289,10 @@ def ingest_documents(reset: bool = True) -> dict:
 
 
 if __name__ == "__main__":
-    result = ingest_documents(reset=True)
+    def print_progress(message: str) -> None:
+        timestamp = time.strftime("%H:%M:%S")
+        print(f"[{timestamp}] {message}", flush=True)
+
+    result = ingest_documents(reset=True, progress=print_progress)
     print(result["message"])
     print(f"Arquivos: {result['files']} | Paginas/entradas: {result['pages']} | Chunks: {result['chunks']}")

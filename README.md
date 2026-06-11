@@ -65,10 +65,25 @@ OPENAI_API_KEY=sua_chave_openai_aqui
 Execute:
 
 ```bash
-streamlit run app.py
+python -m uvicorn app:app --host 127.0.0.1 --port 8501
 ```
 
-A interface abrirá no navegador.
+A interface React será servida pelo FastAPI em `http://localhost:8501`.
+
+Para desenvolvimento do frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Para gerar o frontend de produção usado pelo FastAPI:
+
+```bash
+cd frontend
+npm run build
+```
 
 ## Como adicionar documentos
 

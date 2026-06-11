@@ -3,6 +3,7 @@
 __pycache__/
 *.py[cod]
 .streamlit/secrets.toml
+frontend/node_modules/
 chroma_db/*
 !chroma_db/.gitkeep
 data/*
