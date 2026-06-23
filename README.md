@@ -196,3 +196,5 @@ POST /api/chat
 ## Repositório
 
 [github.com/Plusnar/Agente-RAG-Univille](https://github.com/Plusnar/Agente-RAG-Univille)
+
+Vercel: https://assistente-univille.vercel.app/
