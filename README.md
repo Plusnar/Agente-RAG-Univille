@@ -193,8 +193,94 @@ POST /api/chat
 
 ---
 
+
+
 ## Repositório
 
 [github.com/Plusnar/Agente-RAG-Univille](https://github.com/Plusnar/Agente-RAG-Univille)
 
 Vercel: https://assistente-univille.vercel.app/
+
+# Como rodar
+
+## 1. Onde colocar os arquivos
+
+Coloque PDFs e TXTs na pasta `data/`:
+
+```text
+RAG/data/
+├── Guia2.pdf
+├── Edital2025.pdf
+└── regulamento.txt
+```
+
+Só aceita **PDF** e **TXT**, direto na pasta (sem subpastas).
+
+---
+
+## 2. O que instalar
+
+**Pré-requisitos:** Python 3.10+, Node.js 18+, chave da [Cohere](https://cohere.com)
+
+No terminal, na raiz do projeto:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+copy .env.example .env
+```
+
+Edite `.env` e coloque sua chave:
+
+```env
+COHERE_API_KEY=sua_chave_aqui
+```
+
+---
+
+## 3. O que rodar
+
+**Indexar os documentos** (obrigatório antes de usar):
+
+```powershell
+python ingest.py
+```
+
+Isso lê os arquivos de `data/` e gera o índice em `chroma_db/`. Rode de novo sempre que trocar os PDFs.
+
+---
+
+## 4. Usar o projeto
+
+### Opção A — Rodar local
+
+```powershell
+cd frontend
+npm install
+npm run build
+cd ..
+npm run dev:api
+```
+
+Abra **http://127.0.0.1:8501**
+
+### Opção B — Hospedar na Vercel
+
+```powershell
+npm run deploy
+```
+
+Site online: **https://assistente-univille.vercel.app/**
+
+> A indexação (`python ingest.py`) sempre é feita no seu PC. O site não indexa documentos sozinho.
+
+---
+
+## Resumo
+
+```text
+PDFs em data/  →  python ingest.py  →  rodar local OU npm run deploy
+```
+
