@@ -1,102 +1,167 @@
 # Assistente Univille
 
-Assistente RAG em produção na [Vercel](https://vercel.com) para responder perguntas de alunos com base em documentos oficiais da Univille — editais, calendários, regulamentos, matrizes curriculares e demais PDFs/TXTs indexados.
+Assistente inteligente baseado em **RAG (Retrieval-Augmented Generation)** para alunos da Univille. O sistema lê documentos oficiais da instituição — editais, calendários, regulamentos, matrizes curriculares e guias — e responde perguntas em linguagem natural com base exclusivamente nesse conteúdo.
 
-O sistema combina uma interface React animada com uma API Python serverless (FastAPI). O aluno faz perguntas em linguagem natural; o assistente consulta os documentos, gera uma resposta fundamentada e exibe a fonte consultada.
+Em vez de depender da memória geral de um modelo de linguagem, o assistente **busca trechos relevantes nos documentos**, monta um contexto preciso e só então gera a resposta. Isso reduz alucinações e garante que prazos, regras e procedimentos venham das fontes corretas.
 
-## O que o assistente faz
+---
 
-- Responde perguntas **somente** com base nos documentos indexados no deploy.
-- Mantém **memória curta** da conversa (até 6 mensagens recentes) para entender referências como "esse prazo" ou "essa disciplina".
-- Exibe a **fonte consultada** em um modal separado, com trecho do documento e link para abrir o PDF.
-- Possui personalidade universitária e leve, sem comprometer a precisão em assuntos acadêmicos e burocráticos.
-- Recusa perguntas fora do escopo dos documentos ou de conhecimento geral, com mensagens claras ao aluno.
+## Para que serve
 
-## Arquitetura em produção
+O Assistente Univille existe para centralizar o acesso à informação institucional. Um aluno pode perguntar coisas como:
+
+- *"Qual o prazo para rematrícula?"*
+- *"Como funciona o estágio obrigatório?"*
+- *"O que o edital diz sobre trancamento?"*
+
+O sistema consulta os PDFs e TXTs indexados, identifica os trechos mais relacionados à pergunta e devolve uma resposta clara, com link para a **fonte consultada** (arquivo, página e trecho utilizado).
+
+Também mantém **memória curta da conversa** (até 6 mensagens recentes), permitindo perguntas de continuação como *"e qual o prazo disso?"* sem que o aluno precise repetir o contexto.
+
+---
+
+## Como funciona
+
+O projeto segue a arquitetura clássica de um sistema RAG em três etapas: **indexação**, **recuperação** e **geração**.
 
 ```text
-Aluno (navegador)
-       │
-       ▼
-┌──────────────────────────────────────┐
-│  Vercel — frontend estático (React)  │
-│  frontend/dist                       │
-└──────────────────────────────────────┘
-       │  POST /api/chat
-       ▼
-┌──────────────────────────────────────┐
-│  Vercel — função serverless Python   │
-│  api/index.py → FastAPI (app.py)     │
-│  Memória: 2048 MB · Timeout: 60 s    │
-└──────────────────────────────────────┘
-       │
-       ├── ChromaDB (índice em /tmp, copiado do deploy)
-       ├── data/ (PDFs e TXTs embutidos no deploy)
-       └── Cohere API (embeddings + LLM + rerank)
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐     ┌──────────────┐
+│  Documentos │ ──► │  Embeddings  │ ──► │  ChromaDB   │     │              │
+│  PDF / TXT  │     │  (vetores)   │     │  (índice)   │     │              │
+└─────────────┘     └──────────────┘     └─────────────┘     │   Resposta   │
+                                                              │   ao aluno   │
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐     │              │
+│  Pergunta   │ ──► │  Busca       │ ──► │  LLM        │ ──► └──────────────┘
+│  do aluno   │     │  vetorial    │     │  (Cohere)   │
+└─────────────┘     └──────────────┘     └─────────────┘
 ```
 
-Na Vercel, o frontend é servido como site estático. As rotas `/api/*` e `/documents/*` são encaminhadas para a função Python. O índice vetorial (`chroma_db/`) e os documentos (`data/`) vão junto no deploy e são copiados para `/tmp` em cada cold start, pois o filesystem da Vercel é somente leitura.
+### 1. Indexação (`ingest.py`)
 
-## Estrutura do repositório
+Antes de responder qualquer pergunta, os documentos passam por um pipeline de preparação:
+
+1. **Leitura** — PDFs são extraídos página a página com `pypdf`; arquivos TXT são lidos em UTF-8 ou Latin-1.
+2. **Metadados** — cada trecho recebe informações como nome do arquivo, número da página, seção detectada e intervalo de linhas.
+3. **Chunking** — o texto é dividido em pedaços de ~900 caracteres com sobreposição de 180 caracteres (`RecursiveCharacterTextSplitter`), preservando parágrafos e frases sempre que possível.
+4. **Vetorização** — cada chunk é convertido em um **embedding** (vetor numérico de alta dimensão) pelo modelo `embed-multilingual-v3.0` da Cohere.
+5. **Armazenamento** — os vetores e metadados são salvos no **ChromaDB**, um banco de dados vetorial persistente em `chroma_db/`.
+
+### 2. Recuperação (`rag.py`)
+
+Quando o aluno faz uma pergunta:
+
+1. A pergunta também é convertida em embedding pelo mesmo modelo.
+2. O ChromaDB executa uma **busca por similaridade** — compara o vetor da pergunta com todos os vetores dos chunks e retorna os mais próximos no espaço semântico (até 12 candidatos).
+3. Opcionalmente, o **Cohere Rerank** (`rerank-v4.0-fast`) reordena esses candidatos por relevância real em relação à pergunta e descarta trechos com score abaixo de 0.20.
+4. Os 5 melhores chunks (`RETRIEVER_K`) formam o contexto enviado ao modelo de linguagem.
+
+### 3. Geração (`rag.py` + `prompts.py`)
+
+O modelo `command-a-03-2025` (Cohere) recebe:
+
+- instruções de comportamento do assistente;
+- o histórico recente da conversa;
+- os trechos recuperados dos documentos;
+- a pergunta do aluno.
+
+Ele produz a resposta final **somente com base nesse contexto**. As fontes são exibidas separadamente na interface, no botão **Consultar fonte**.
+
+---
+
+## Embeddings e busca vetorial
+
+### O que é um embedding?
+
+Um **embedding** é uma representação numérica de um texto. O modelo de embeddings transforma palavras, frases e parágrafos em listas de números (vetores) de centenas de dimensões.
+
+Textos com **significado parecido** ficam **próximos** nesse espaço vetorial, mesmo usando palavras diferentes. Por exemplo, *"prazo de rematrícula"* e *"data limite para renovar a matrícula"* geram vetores similares.
+
+O projeto usa o modelo **`embed-multilingual-v3.0`** da Cohere, otimizado para múltiplos idiomas — ideal para documentos acadêmicos em português.
+
+### Como funciona a busca vetorial?
+
+A busca vetorial substitui a busca por palavra-chave tradicional. Em vez de procurar correspondências literais, o sistema mede a **distância semântica** entre a pergunta e cada chunk armazenado.
+
+```text
+Pergunta: "Quando devo fazer a rematrícula?"
+                    │
+                    ▼  embedding da pergunta → [0.12, -0.45, 0.88, ...]
+                    │
+        ┌───────────┼───────────┐
+        ▼           ▼           ▼
+   Chunk A       Chunk B       Chunk C
+   score 0.91    score 0.87    score 0.34
+   (edital)      (calendário)  (matriz)
+        │           │
+        └─────┬─────┘
+              ▼
+        Contexto enviado ao LLM
+```
+
+O ChromaDB calcula a similaridade entre vetores e devolve os chunks com maior afinidade semântica. Isso permite encontrar informações mesmo quando o aluno formula a pergunta de forma diferente do texto original do documento.
+
+### Rerank: refinando a busca
+
+A busca vetorial é rápida, mas às vezes traz trechos apenas vagamente relacionados. O **rerank** é uma segunda camada que usa um modelo especializado para avaliar, par a par, a relevância de cada trecho em relação à pergunta. Só os chunks com score acima do limiar configurado seguem para a geração da resposta.
+
+---
+
+## Stack tecnológica
+
+| Camada | Tecnologia | Função |
+|--------|------------|--------|
+| **Frontend** | React 19, Vite 7 | Interface de chat animada com personagem assistente |
+| **API** | FastAPI, Mangum | Endpoints REST; adaptador serverless para a Vercel |
+| **Orquestração RAG** | LangChain | Integração entre embeddings, vectorstore e LLM |
+| **Banco vetorial** | ChromaDB | Armazenamento e busca por similaridade dos embeddings |
+| **Embeddings** | Cohere `embed-multilingual-v3.0` | Conversão de texto em vetores semânticos |
+| **LLM** | Cohere `command-a-03-2025` | Geração da resposta em linguagem natural |
+| **Rerank** | Cohere `rerank-v4.0-fast` | Reordenação dos trechos por relevância |
+| **Leitura de PDF** | pypdf | Extração de texto página a página |
+| **Hospedagem** | Vercel | Frontend estático + função Python serverless |
+
+---
+
+## Estrutura do projeto
 
 ```text
 .
-├── api/index.py          # Handler serverless (Mangum + FastAPI)
-├── app.py                # API REST
+├── api/index.py          # Entrada serverless (Mangum)
+├── app.py                # API REST — rotas de chat, documentos e health
 ├── rag.py                # Busca vetorial, rerank e geração de resposta
-├── ingest.py             # Pipeline de indexação (usado antes do deploy)
-├── config.py             # Configuração e providers de IA
-├── prompts.py            # Instruções do assistente
+├── ingest.py             # Leitura, chunking e indexação no ChromaDB
+├── config.py             # Providers de IA e parâmetros do pipeline
+├── prompts.py            # Personalidade e regras do assistente
 ├── frontend/             # Interface React (Vite)
-├── data/                 # Documentos oficiais (PDF/TXT)
-├── chroma_db/            # Índice vetorial pré-gerado
-├── vercel.json           # Configuração de build e rewrites
-└── requirements.txt      # Dependências Python de produção
+├── data/                 # Documentos oficiais (PDF e TXT)
+├── chroma_db/            # Índice vetorial persistido
+└── vercel.json           # Configuração de build e deploy
 ```
+
+---
 
 ## Interface
 
-A interface de produção oferece:
+A interface oferece uma experiência de chat com:
 
-- Chat com personagem animado que reage ao estado da conversa (ouvindo, pensando, respondendo).
-- Efeito de digitação nas respostas do assistente.
-- Botão **Consultar fonte** com nome do arquivo, página, linhas e trecho utilizado.
-- Link para abrir o PDF ou TXT original em `/documents/{arquivo}`.
-- Persistência da conversa na sessão do navegador (`sessionStorage`).
-- Modo apresentação para uso em telas maiores.
+- Personagem animado que reage ao estado da conversa (ouvindo, pensando, respondendo).
+- Efeito de digitação nas respostas.
+- Botão **Consultar fonte** com arquivo, página, linhas e trecho do documento.
+- Abertura do PDF ou TXT original diretamente pelo navegador.
+- Persistência da conversa na sessão do navegador.
 
-O painel de administração de documentos **não está disponível** em produção (`VITE_ADMIN_ENABLED=false`).
+---
 
-## Pipeline RAG
-
-Fluxo de cada pergunta em produção:
-
-1. **Pré-processamento** — saudações curtas ("oi", "bom dia") recebem resposta fixa sem consultar o índice.
-2. **Busca vetorial** — o ChromaDB recupera os chunks mais similares à pergunta (até 12 candidatos).
-3. **Rerank (opcional)** — a API Cohere reordena os trechos por relevância e filtra por score mínimo.
-4. **Geração** — o modelo `command-a-03-2025` (Cohere) responde usando apenas o contexto recuperado e o histórico recente.
-5. **Pós-processamento** — remove menções a fontes no texto, detecta respostas genéricas ou fora de escopo e formata a saída.
-6. **Exibição** — a resposta vai para o chat; a fonte com maior relevância aparece no modal.
-
-### Regras anti-alucinação
-
-O assistente é instruído a:
-
-- Não inventar prazos, nomes, valores ou procedimentos.
-- Não usar conhecimento externo, mesmo que pareça óbvio.
-- Informar *"Não encontrei essa informação nos documentos disponíveis."* quando o contexto não contém a resposta.
-- Pedir esclarecimento quando a pergunta estiver confusa ou fora do universo Univille.
-
-## API em produção
+## API
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
-| `GET` | `/api/health` | Status do serviço, ambiente e providers |
+| `GET` | `/api/health` | Status do serviço |
 | `POST` | `/api/chat` | Envia pergunta e histórico; retorna resposta e fontes |
-| `GET` | `/api/documents` | Lista documentos disponíveis no deploy |
-| `GET` | `/documents/{arquivo}` | Abre PDF ou TXT original |
+| `GET` | `/api/documents` | Lista documentos indexados |
+| `GET` | `/documents/{arquivo}` | Abre o PDF ou TXT original |
 
-### Exemplo de requisição
+**Exemplo de requisição:**
 
 ```json
 POST /api/chat
@@ -109,93 +174,25 @@ POST /api/chat
 }
 ```
 
-### Exemplo de resposta
+**Exemplo de resposta:**
 
 ```json
 {
-  "answer": "Texto da resposta gerada pelo assistente.",
+  "answer": "A rematrícula deve ser feita entre ...",
   "sources": ["Guia2.pdf, pagina 3"],
   "source_details": [
     {
       "file_name": "Guia2.pdf",
       "file_type": "pdf",
       "page": 3,
-      "section": "",
-      "line_start": 12,
-      "line_end": 28,
       "excerpt": "Trecho utilizado como contexto..."
     }
   ]
 }
 ```
 
-Rotas de administração (`/api/admin/*`) existem na API, mas retornam erro **503** em produção — upload e reindexação não são permitidos no ambiente serverless.
-
-## Variáveis de ambiente (Vercel)
-
-Configure em **Settings → Environment Variables** no painel da Vercel:
-
-| Variável | Obrigatória | Valor em produção |
-|----------|-------------|-------------------|
-| `COHERE_API_KEY` | Sim | Chave da API Cohere |
-| `EMBEDDING_PROVIDER` | Sim | `cohere` |
-| `LLM_PROVIDER` | Sim | `cohere` |
-| `COHERE_EMBED_MODEL` | Não | `embed-multilingual-v3.0` (padrão) |
-| `COHERE_CHAT_MODEL` | Não | `command-a-03-2025` (padrão) |
-| `CHROMA_COLLECTION` | Não | `assistente_univille` (padrão) |
-| `RETRIEVER_K` | Não | `5` — quantidade de chunks enviados ao LLM |
-| `USE_COHERE_RERANK` | Não | `true` ou `false` |
-| `COHERE_RERANK_MODEL` | Não | `rerank-v4.0-fast` (padrão) |
-| `MIN_RERANK_SCORE` | Não | `0.20` — score mínimo do rerank |
-
-Embeddings locais (`local`) e OpenAI são suportados no código, mas em produção o provider **deve ser `cohere`** — modelos locais são pesados demais para funções serverless.
-
-## Deploy na Vercel
-
-O projeto está configurado para deploy contínuo a partir do repositório GitHub ou via Vercel CLI.
-
-### Build
-
-O `vercel.json` define:
-
-- **Install:** `cd frontend && npm ci`
-- **Build:** `cd frontend && npm run build`
-- **Output:** `frontend/dist`
-- **Função Python:** `api/index.py` com `chroma_db/**`, `data/**` e `*.py` incluídos
-
-### Atualizar documentos em produção
-
-Como o filesystem da Vercel é somente leitura, documentos novos ou alterados precisam ser preparados **antes** do deploy:
-
-1. Adicionar ou substituir PDFs/TXTs em `data/`.
-2. Gerar o índice vetorial em `chroma_db/` (pipeline de indexação).
-3. Fazer redeploy na Vercel com `data/` e `chroma_db/` atualizados.
-
-Após o deploy, os alunos passam a consultar a nova base automaticamente.
-
-## Limitações em produção
-
-| Limitação | Detalhe |
-|-----------|---------|
-| Sem upload na interface | Painel admin desativado; documentos vêm do deploy |
-| Filesystem somente leitura | Índice copiado para `/tmp` a cada cold start |
-| Timeout de 60 s | Perguntas muito complexas podem expirar |
-| Memória de 2048 MB | Limite da função serverless |
-| Provider Cohere obrigatório | Embeddings e LLM via API externa |
-| Rate limit da Cohere | Chaves trial podem bloquear temporariamente em picos de uso |
-
-## Stack tecnológica
-
-| Camada | Tecnologia |
-|--------|------------|
-| Frontend | React 19, Vite 7 |
-| API | FastAPI, Mangum |
-| RAG | LangChain, ChromaDB |
-| Embeddings | Cohere `embed-multilingual-v3.0` |
-| LLM | Cohere `command-a-03-2025` |
-| Rerank | Cohere `rerank-v4.0-fast` |
-| Hospedagem | Vercel (serverless Python + CDN estática) |
+---
 
 ## Repositório
 
-Código-fonte: [github.com/Plusnar/Agente-RAG-Univille](https://github.com/Plusnar/Agente-RAG-Univille)
+[github.com/Plusnar/Agente-RAG-Univille](https://github.com/Plusnar/Agente-RAG-Univille)
