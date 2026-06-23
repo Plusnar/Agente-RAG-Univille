@@ -1,0 +1,10 @@
+{
+  "name": "assistente-univille",
+  "private": true,
+  "scripts": {
+    "build": "cd frontend && npm run build",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:api": "python -m uvicorn app:app --host 127.0.0.1 --port 8501 --reload",
+    "deploy": "powershell -ExecutionPolicy Bypass -File scripts/deploy-vercel.ps1"
+  }
+}

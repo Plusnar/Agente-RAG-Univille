@@ -1,0 +1,23 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "cd frontend && npm ci",
+  "buildCommand": "cd frontend && npm run build",
+  "outputDirectory": "frontend/dist",
+  "framework": null,
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api" },
+    { "source": "/documents/(.*)", "destination": "/api" }
+  ],
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 60,
+      "memory": 2048,
+      "includeFiles": "chroma_db/**,data/**,*.py"
+    }
+  },
+  "build": {
+    "env": {
+      "VITE_ADMIN_ENABLED": "false"
+    }
+  }
+}

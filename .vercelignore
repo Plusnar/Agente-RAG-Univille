@@ -1,0 +1,11 @@
+.venv
+__pycache__
+*.py[cod]
+.streamlit
+env
+.env
+.env.local
+*.log
+mascote.png
+frontend/node_modules
+frontend/dist
