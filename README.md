@@ -173,17 +173,6 @@ Como o filesystem da Vercel é somente leitura, documentos novos ou alterados pr
 
 Após o deploy, os alunos passam a consultar a nova base automaticamente.
 
-## Limitações em produção
-
-| Limitação | Detalhe |
-|-----------|---------|
-| Sem upload na interface | Painel admin desativado; documentos vêm do deploy |
-| Filesystem somente leitura | Índice copiado para `/tmp` a cada cold start |
-| Timeout de 60 s | Perguntas muito complexas podem expirar |
-| Memória de 2048 MB | Limite da função serverless |
-| Provider Cohere obrigatório | Embeddings e LLM via API externa |
-| Rate limit da Cohere | Chaves trial podem bloquear temporariamente em picos de uso |
-
 ## Stack tecnológica
 
 | Camada | Tecnologia |
