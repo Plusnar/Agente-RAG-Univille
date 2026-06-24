@@ -201,6 +201,11 @@ POST /api/chat
 
 Vercel: https://assistente-univille.vercel.app/
 
+## Modo apresentação
+Para colocar no modo apresentação basta digitar /apresentacao
+Para voltar ao modo normal basta digitar /sair
+Este modo foi criado apenas para a apresentação presencial com fogo na explicação RAG.
+
 # Como rodar
 
 ## 1. Onde colocar os arquivos
