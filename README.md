@@ -202,7 +202,7 @@ POST /api/chat
 
 Vercel: https://assistente-univille.vercel.app/
 
-## Modo apresentação
+## Modo apresentação (direto no chat do assistente)
 Para colocar no modo apresentação basta digitar /apresentacao
 
 Para voltar ao modo normal basta digitar /sair
