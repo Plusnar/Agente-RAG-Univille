@@ -207,7 +207,7 @@ Para colocar no modo apresentação basta digitar /apresentacao
 
 Para voltar ao modo normal basta digitar /sair
 
-Este modo foi criado apenas para a apresentação presencial com fogo na explicação RAG.
+Este modo foi criado apenas para a apresentação presencial com foco na explicação RAG.
 
 # Como rodar
 
