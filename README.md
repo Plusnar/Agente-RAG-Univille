@@ -280,8 +280,6 @@ Abra **http://127.0.0.1:8501**
 npm run deploy
 ```
 
-Site online: **https://assistente-univille.vercel.app/**
-
 > A indexação (`python ingest.py`) sempre é feita no seu PC. O site não indexa documentos sozinho.
 
 ---
