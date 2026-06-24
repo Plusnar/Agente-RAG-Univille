@@ -145,6 +145,7 @@ A busca vetorial é rápida, mas às vezes traz trechos apenas vagamente relacio
 A interface oferece uma experiência de chat com:
 
 - Personagem animado que reage ao estado da conversa (ouvindo, pensando, respondendo).
+- É possível clicar no personagem com interação e conta com easter egg ao digitar pizza ou frases contendo pizza.
 - Efeito de digitação nas respostas.
 - Botão **Consultar fonte** com arquivo, página, linhas e trecho do documento.
 - Abertura do PDF ou TXT original diretamente pelo navegador.
