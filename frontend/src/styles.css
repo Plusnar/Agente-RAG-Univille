@@ -403,6 +403,12 @@ button {
   transform: translateY(0) scale(0.97);
 }
 
+.bubble-action-speech.is-speaking {
+  background: #dcfce7;
+  border-color: var(--brand-400);
+  color: var(--brand-700);
+}
+
 .bubble-action-copy,
 .bubble-action-retry-error {
   display: none;

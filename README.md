@@ -147,6 +147,7 @@ A interface oferece uma experiência de chat com:
 - Personagem animado que reage ao estado da conversa (ouvindo, pensando, respondendo).
 - É possível clicar no personagem com interação e conta com easter egg ao digitar pizza ou frases contendo pizza.
 - Efeito de digitação nas respostas.
+- Botão **Ouvir** nas respostas do assistente, com leitura em voz alta via `speechSynthesis` em português e animação de fala no personagem enquanto o áudio toca.
 - Botão **Consultar fonte** com arquivo, página, linhas e trecho do documento.
 - Abertura do PDF ou TXT original diretamente pelo navegador.
 - Persistência da conversa na sessão do navegador.
@@ -289,4 +290,3 @@ npm run deploy
 ```text
 PDFs em data/  →  python ingest.py  →  rodar local OU npm run deploy
 ```
-

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Check, Copy, FileText, MonitorPlay, RefreshCw } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Check, Copy, FileText, MonitorPlay, RefreshCw, Volume2, VolumeX } from "lucide-react";
 import { useTypewriter } from "../hooks/useTypewriter";
 import { SourcesModal } from "./SourcesModal";
 import { SlideModal } from "./SlideModal";
@@ -111,18 +111,52 @@ function renderMarkdown(text) {
   });
 }
 
+function getSpeechText(text) {
+  return String(text || "")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
+    .replace(/\[(.*?)\]\((.*?)\)/g, "$1")
+    .replace(/#{1,6}\s/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getPortugueseVoice() {
+  const voices = window.speechSynthesis?.getVoices?.() || [];
+  const masculineVoicePattern = /daniel|antonio|ricardo|felipe|male|masculino|homem/i;
+  return (
+    voices.find(
+      (voice) => voice.lang === "pt-BR" && masculineVoicePattern.test(voice.name)
+    ) ||
+    voices.find(
+      (voice) => voice.lang?.startsWith("pt") && masculineVoicePattern.test(voice.name)
+    ) ||
+    voices.find((voice) => voice.lang?.toLowerCase() === "pt-br") ||
+    voices.find((voice) => voice.lang?.toLowerCase().startsWith("pt")) ||
+    null
+  );
+}
+
 export function MessageBubble({
   message,
   animate = false,
   isLast = false,
   onRegenerate,
   onTypingChange,
+  onSpeechChange,
   onTick,
   presentationMode = false,
 }) {
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [slideSource, setSlideSource] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const speakingRef = useRef(false);
+  const speechSupported =
+    typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
   const isAssistant = message.role === "assistant";
   const validSources = (message.sources || []).filter((source) =>
     String(source.excerpt || "").trim()
@@ -139,6 +173,34 @@ export function MessageBubble({
     if (done) onTypingChange?.(false);
   }, [isAssistant, animate, done, onTypingChange]);
 
+  useEffect(() => {
+    function stopWhenAnotherMessageStarts(event) {
+      if (event.detail !== message.id) {
+        setSpeaking(false);
+        if (speakingRef.current) onSpeechChange?.(false);
+      }
+    }
+
+    window.addEventListener("univille-assistant-speech-start", stopWhenAnotherMessageStarts);
+    return () => {
+      window.removeEventListener("univille-assistant-speech-start", stopWhenAnotherMessageStarts);
+    };
+  }, [message.id, onSpeechChange]);
+
+  useEffect(() => {
+    speakingRef.current = speaking;
+    onSpeechChange?.(speaking);
+  }, [speaking, onSpeechChange]);
+
+  useEffect(() => {
+    return () => {
+      if (speakingRef.current) {
+        onSpeechChange?.(false);
+        window.speechSynthesis?.cancel();
+      }
+    };
+  }, [onSpeechChange]);
+
   const display = isAssistant ? text : message.content;
 
   function copyToClipboard() {
@@ -149,6 +211,35 @@ export function MessageBubble({
         setTimeout(() => setCopied(false), 1600);
       })
       .catch(() => {});
+  }
+
+  function toggleSpeech() {
+    if (!speechSupported) return;
+
+    if (speaking) {
+      window.speechSynthesis.cancel();
+      setSpeaking(false);
+      onSpeechChange?.(false);
+      return;
+    }
+
+    const speechText = getSpeechText(message.content);
+    if (!speechText) return;
+
+    window.speechSynthesis.cancel();
+    window.dispatchEvent(new CustomEvent("univille-assistant-speech-start", { detail: message.id }));
+
+    const utterance = new SpeechSynthesisUtterance(speechText);
+    utterance.lang = "pt-BR";
+    utterance.rate = 1.15;
+    utterance.pitch = 0.85;
+    utterance.volume = 1;
+    utterance.voice = getPortugueseVoice();
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+
+    setSpeaking(true);
+    window.speechSynthesis.speak(utterance);
   }
 
   const showActions = isAssistant && (done || !animate);
@@ -164,6 +255,18 @@ export function MessageBubble({
 
         {showActions && (
           <div className="bubble-actions">
+            {speechSupported && !message.isError && (
+              <button
+                type="button"
+                className={`bubble-action-speech ${speaking ? "is-speaking" : ""}`}
+                onClick={toggleSpeech}
+                aria-label={speaking ? "Parar leitura da resposta" : "Ouvir resposta em voz alta"}
+                title={speaking ? "Parar leitura" : "Ouvir resposta"}
+              >
+                {speaking ? <VolumeX size={15} /> : <Volume2 size={15} />}
+                {speaking ? "Parar" : "Ouvir"}
+              </button>
+            )}
             {!!validSources.length && (
               <button onClick={() => setSourcesOpen(true)}>
                 <FileText size={15} /> Consultar fonte

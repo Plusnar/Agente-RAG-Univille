@@ -66,6 +66,7 @@ export default function App() {
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [aiTyping, setAiTyping] = useState(false);
+  const [audioSpeaking, setAudioSpeaking] = useState(false);
   const [userTyping, setUserTyping] = useState(false);
   const [error, setError] = useState(false);
   const [assistantMinimized, setAssistantMinimized] = useState(false);
@@ -85,7 +86,7 @@ export default function App() {
   const pizzaTimer = useRef(null);
   const confusedTimer = useRef(null);
 
-  const { status, emotion } = useAssistantController({ loading, aiTyping, userTyping, error, confused });
+  const { status, emotion } = useAssistantController({ loading, aiTyping, audioSpeaking, userTyping, error, confused });
 
   useEffect(
     () => () => {
@@ -350,6 +351,7 @@ export default function App() {
               isLast={index === messages.length - 1}
               onRegenerate={regenerateLast}
               onTypingChange={setAiTyping}
+              onSpeechChange={setAudioSpeaking}
               onTick={maybeScroll}
               presentationMode={presentationMode}
             />
