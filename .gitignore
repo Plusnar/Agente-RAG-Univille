@@ -1,6 +1,8 @@
 .env
 .venv/
 __pycache__/
+.env.vercel
+kilo.env
 *.py[cod]
 .streamlit/
 frontend/node_modules/

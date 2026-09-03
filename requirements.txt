@@ -14,3 +14,4 @@ langchain-openai>=0.1.8
 langchain-cohere>=0.1.5
 cohere>=5.5.0
 openai>=1.30.0
+requests>=2.32.0
